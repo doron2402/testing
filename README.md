@@ -1,40 +1,56 @@
-# express-example
+# Express Example
 
-This repository demonstrates the usage of sequelize within an express application.
-The implemented logic is a simple task tracking tool.
+## Starting App
 
-## Starting the app
+**Without Migrations**
 
 ```
 npm install
 npm start
 ```
 
-This will start the application and create an sqlite database in your app dir.
-Just open [http://localhost:3000](http://localhost:3000).
+**With Migrations**
 
-## The setup
+```
+npm install
+npm run migrations
+npm start
+```
 
-In order to understand how this application has been built, you can find the
-executed steps in the following snippet. You should be able to adjust those
-steps according to your needs. Please note that the view and the routes aren't
-described. You can find those files in the repo.
+
+[http://localhost:3000](http://localhost:3000).
+
+## Running Tests
+
+- [Mocha](https://mochajs.org) based test. You can run them by `npm test`
+
+#### Sequelize Setup
+
 
 ```bash
-mkdir express-example
-cd express-example
-npm install express-generator
-node_modules/.bin/express -f
-npm install
-npm install --save sequelize@2.0.0-rc1 sequelize-cli sqlite3
+# install ORM , CLI and SQLite dialect
+npm install --save sequelize sequelize-cli sqlite3
+
+# generate models
 node_modules/.bin/sequelize init
 node_modules/.bin/sequelize model:create --name User --attributes username:string
 node_modules/.bin/sequelize model:create --name Task --attributes title:string
 ```
 
+We are using `.sequelizerc` setup change config path for migrations. You can read more about this in [migration docs](http://docs.sequelizejs.com/manual/tutorial/migrations.html#the-sequelizerc-file)
+
+```js
+// .sequelizerc
+const path = require('path');
+
+module.exports = {
+  'config': path.resolve('config', 'config.js')
+}
+```
+
 You will now have a basic express application with some additional directories
 (config, models, migrations). Also you will find two migrations and models.
-One for the User and one for the Task.
+One for the `User` and one for the `Task`.
 
 In order to associate the models with each other, you need to change the models
 like this:
@@ -42,22 +58,42 @@ like this:
 ```js
 // task.js
 // ...
-classMethods: {
-  associate: function(models) {
-    Task.belongsTo(models.User);
+  Task.associate = function(models) {
+    // Using additional options like CASCADE etc for demonstration
+    // Can also simply do Task.belongsTo(models.User);
+    Task.belongsTo(models.User, {
+      onDelete: "CASCADE",
+      foreignKey: {
+        allowNull: false
+      }
+    });
   }
-}
 // ...
 ```
 
 ```js
 // user.js
 // ...
-classMethods: {
-  associate: function(models) {
-    User.hasMany(models.Task)
+  User.associate = function(models) {
+    User.hasMany(models.Task);
   }
-}
+// ...
+```
+
+This association will create an attribute `UserId` in `Task` model. We have to amend our `create-task` migration and add this column.
+
+```js
+// xxxxxxx-create-task.js
+// ...
+  UserId: {
+    type: Sequelize.INTEGER,
+    onDelete: "CASCADE",
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
+  }
 // ...
 ```
 
@@ -67,22 +103,27 @@ you have to adjust the `bin/www` file to this:
 ```js
 #!/usr/bin/env node
 
-var debug = require('debug')('express-example');
 var app = require('../app');
+var debug = require('debug')('init:server');
+var http = require('http');
 var models = require("../models");
 
-app.set('port', process.env.PORT || 3000);
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
 
+var server = http.createServer(app);
+
+// sync() will create all table if they doesn't exist in database
 models.sequelize.sync().then(function () {
-  var server = app.listen(app.get('port'), function() {
-    debug('Express server listening on port ' + server.address().port);
-  });
+  server.listen(port);
+  server.on('error', onError);
+  server.on('listening', onListening);
 });
+
+function normalizePort(val) { /* ... */ }
+function onError(error) { /* ... */ }
+function onListening() { /* ... */ }
 ```
 
-And finally you have to adjust the `config/config.json` to fit your environment.
+And finally you have to adjust the `config/config.js` to fit your environment.
 Once thats done, your database configuration is ready!
-
-## The tests
-
-You can run the tests by executing `npm test`.
